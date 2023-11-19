@@ -5,7 +5,7 @@ use generic_array::GenericArray;
 use rand_core::{RngCore, OsRng};
 use x25519_dalek::{EphemeralSecret, PublicKey, StaticSecret};
 
-#[derive(Clone, Copy, PartialEq)]
+#[derive(Clone, Copy)]
 enum AmoraVer {
 	Zero = 0xa0,
 	One = 0xa1,

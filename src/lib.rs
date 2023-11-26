@@ -61,6 +61,7 @@ pub struct Amora {
 impl Amora {
 	/// Creates Amora instance with a symmetric key loaded from [u8; 32] slice.
 	/// ```rust
+	/// use amora_rs::Amora;
 	/// let key = [
 	///     0x4f, 0x99, 0x70, 0x66, 0x2f, 0xac, 0xd3, 0x7d,
 	///     0xc3, 0x6c, 0x0f, 0xd1, 0xda, 0xd0, 0x7e, 0xaa,
@@ -80,12 +81,14 @@ impl Amora {
 
 	/// Creates Amora instance with an asymmetric key loaded from two [u8; 32] slices.
 	/// ```rust
+	/// use amora_rs::Amora;
+	/// use x25519_dalek::{PublicKey, StaticSecret};
 	/// let secret_key = StaticSecret::random();
 	/// let public_key = PublicKey::from(&secret_key);
 	/// let amora = Amora::amora_one(Some(secret_key), Some(public_key));
 	/// ```
-	/// The public key is used to encrypt the token,
-	/// and the private key is used to decrypt the token.
+	/// The public key is used to encode the token,
+	/// and the secret key is used to decode the token.
 	/// One of these keys can be None when not in use.
 	pub fn amora_one(secret_key: Option<StaticSecret>, public_key: Option<PublicKey>) -> Amora {
 		Amora {
@@ -119,6 +122,7 @@ impl Amora {
 
 	/// Creates Amora instance with a symmetric key loaded from a hex string.
 	/// ```rust
+	/// use amora_rs::Amora;
 	/// let key = "4f9970662facd37dc36c0fd1dad07eaa047c2854583c920f524b2b01d840831a";
 	/// let amora = Amora::amora_zero_from_str(key).unwrap();
 	/// ```
@@ -129,12 +133,13 @@ impl Amora {
 
 	/// Create Amora instance with an asymmetric key loaded from two strings.
 	/// ```rust
+	/// use amora_rs::Amora;
 	/// let secret_key = "778d0b92672b9a25ec4fbe65e3ad2212efa011e8f7035754c1342fe46191dbb3";
 	/// let public_key = "5cdd89c1bb6859c927c50b6976712f256cdbf14d7273f723dc121c191f9d6d6d";
 	/// let amora = Amora::amora_one_from_str(Some(secret_key), Some(public_key)).unwrap();
 	/// ```
-	/// The public key is used to encrypt the token,
-	/// and the private key is used to decrypt the token.
+	/// The public key is used to encode the token,
+	/// and the secret key is used to decode the token.
 	/// One of these keys can be None when not in use.
 	pub fn amora_one_from_str(secret_key: Option<&str>, public_key: Option<&str>)
 		-> Result<Amora, AmoraErr> {
@@ -168,6 +173,14 @@ impl Amora {
 	/// Encodes the token.
 	/// TTL is the number of seconds that the token will be valid for.
 	/// ```rust
+	/// use amora_rs::Amora;
+	/// let key = [
+	///     0x4f, 0x99, 0x70, 0x66, 0x2f, 0xac, 0xd3, 0x7d,
+	///     0xc3, 0x6c, 0x0f, 0xd1, 0xda, 0xd0, 0x7e, 0xaa,
+	///     0x04, 0x7c, 0x28, 0x54, 0x58, 0x3c, 0x92, 0x0f,
+	///     0x52, 0x4b, 0x2b, 0x01, 0xd8, 0x40, 0x83, 0x1a,
+	/// ];
+	/// let amora = Amora::amora_zero(&key);
 	/// let payload = "sample_payload";
 	/// let token = amora.encode(&payload.as_bytes(), 1800);
 	/// ```
@@ -217,6 +230,16 @@ impl Amora {
 	/// Decodes the token.
 	/// TTL is only validated if the validate flag is true.
 	/// ```rust
+	/// use amora_rs::Amora;
+	/// let secret_key = [
+	///     0x77, 0x8d, 0x0b, 0x92, 0x67, 0x2b, 0x9a, 0x25,
+	///     0xec, 0x4f, 0xbe, 0x65, 0xe3, 0xad, 0x22, 0x12,
+	///     0xef, 0xa0, 0x11, 0xe8, 0xf7, 0x03, 0x57, 0x54,
+	///     0xc1, 0x34, 0x2f, 0xe4, 0x61, 0x91, 0xdb, 0xb3,
+	/// ];
+	/// let amora = Amora::amora_one(Some(secret_key.into()), None);
+	/// let token = concat!("oQEAAGgmXpFevpAoQpgcC7AFgwmbHKDTABRGdPQxfsIymRJPN4VWZdALbFb_E3Jd8_",
+	///     "xGAihaJSerdTCt-zpa0XRS-sY5F4H1SZ5mwRzpWc4rXYMY1NIgz8DpsGTD-JAdqmsIgTo6SRYl4m4");
 	/// let payload = amora.decode(&token, true).unwrap_or("".into());
 	/// let payload = std::str::from_utf8(&payload).unwrap_or("");
 	/// ```

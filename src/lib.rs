@@ -2,6 +2,42 @@
 //  License, v. 2.0. If a copy of the MPL was not distributed with this
 //  file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
+//! Amora is a secure token inspired by [JWT](https://jwt.io) and [Branca](https://branca.io/),
+//! but enhanced a bit in some areas.
+//!
+//! Key features:
+//! - Can contain any type of payload: JSON, msgpack, cbor and so on...
+//! - Always encrypted and authenticated using XChaCha20-Poly1305 algorithm.
+//! - There are two versions of Amora:
+//!     - **Amora zero**: encrypted with a 32-byte symmetric key.
+//!     - **Amora one**: encrypted with a 32-byte asymmetric key.
+//! - Encoded using url-safe base64.
+//! - Always contain token generation time and TTL.
+//!
+//! ## Amora structure
+//!
+//! - header (4 bytes for Amora zero; 36 bytes for Amora one):
+//!     - version marker: 0xa0 or 0xa1 (1 byte)
+//!     - TTL (3 bytes; little-endian)
+//!     - randomly generated public key (32 bytes; Amora one only)
+//! - nonce (24 bytes)
+//!     - token generation time (first 4 bytes; little-endian)
+//!     - randomly generated 20 bytes
+//! - payload (any length)
+//! - message authentication code (4 bytes)
+//!
+//! ## Token generation time (TGT) + TTL
+//!
+//! TGT is an unsigned 32-bit int. It's a number of seconds starting from the Unix epoch
+//! on January 1, 1970 UTC. This means that Amora tokens will work correctly until the year 2106.
+//!
+//! TTL is an unsigned 24-bits int. It means that each token can be valid for a maximum of 194 days.
+//!
+//! ## Asymmetric encryption
+//!
+//! The shared key is computed using the X25519 function. It requires two pairs of priv/pub keys.
+//! The first pair must be known. The second pair is randomly generated for each token.
+
 use base64::{Engine, engine::general_purpose};
 use chacha20poly1305::XChaCha20Poly1305;
 use chacha20poly1305::aead::{Aead, KeyInit, Payload};
@@ -23,6 +59,16 @@ pub struct Amora {
 }
 
 impl Amora {
+	/// Creates Amora instance with a symmetric key loaded from [u8; 32] slice.
+	/// ```rust
+	/// let key = [
+	///     0x4f, 0x99, 0x70, 0x66, 0x2f, 0xac, 0xd3, 0x7d,
+	///     0xc3, 0x6c, 0x0f, 0xd1, 0xda, 0xd0, 0x7e, 0xaa,
+	///     0x04, 0x7c, 0x28, 0x54, 0x58, 0x3c, 0x92, 0x0f,
+	///     0x52, 0x4b, 0x2b, 0x01, 0xd8, 0x40, 0x83, 0x1a,
+	/// ];
+	/// let amora = Amora::amora_zero(&key);
+	/// ```
 	pub fn amora_zero(key: &[u8; 32]) -> Amora {
 		Amora {
 			version: AmoraVer::Zero,
@@ -32,6 +78,15 @@ impl Amora {
 		}
 	}
 
+	/// Creates Amora instance with an asymmetric key loaded from two [u8; 32] slices.
+	/// ```rust
+	/// let secret_key = StaticSecret::random();
+	/// let public_key = PublicKey::from(&secret_key);
+	/// let amora = Amora::amora_one(Some(secret_key), Some(public_key));
+	/// ```
+	/// The public key is used to encrypt the token,
+	/// and the private key is used to decrypt the token.
+	/// One of these keys can be None when not in use.
 	pub fn amora_one(secret_key: Option<StaticSecret>, public_key: Option<PublicKey>) -> Amora {
 		Amora {
 			version: AmoraVer::One,
@@ -62,11 +117,25 @@ impl Amora {
 		Ok(key_bytes)
 	}
 
+	/// Creates Amora instance with a symmetric key loaded from a hex string.
+	/// ```rust
+	/// let key = "4f9970662facd37dc36c0fd1dad07eaa047c2854583c920f524b2b01d840831a";
+	/// let amora = Amora::amora_zero_from_str(key).unwrap();
+	/// ```
 	pub fn amora_zero_from_str(key: &str) -> Result<Amora, AmoraErr> {
 		let key = Self::key_from_str(key)?;
 		Ok(Self::amora_zero(&key))
 	}
 
+	/// Create Amora instance with an asymmetric key loaded from two strings.
+	/// ```rust
+	/// let secret_key = "778d0b92672b9a25ec4fbe65e3ad2212efa011e8f7035754c1342fe46191dbb3";
+	/// let public_key = "5cdd89c1bb6859c927c50b6976712f256cdbf14d7273f723dc121c191f9d6d6d";
+	/// let amora = Amora::amora_one_from_str(Some(secret_key), Some(public_key)).unwrap();
+	/// ```
+	/// The public key is used to encrypt the token,
+	/// and the private key is used to decrypt the token.
+	/// One of these keys can be None when not in use.
 	pub fn amora_one_from_str(secret_key: Option<&str>, public_key: Option<&str>)
 		-> Result<Amora, AmoraErr> {
 
@@ -96,6 +165,12 @@ impl Amora {
 		}
 	}
 
+	/// Encodes the token.
+	/// TTL is the number of seconds that the token will be valid for.
+	/// ```rust
+	/// let payload = "sample_payload";
+	/// let token = amora.encode(&payload.as_bytes(), 1800);
+	/// ```
 	pub fn encode(&self, payload: &[u8], ttl: u32) -> String {
 		let (cipher, rand_public_key) = match &self.version {
 			AmoraVer::Zero => {
@@ -139,6 +214,12 @@ impl Amora {
 		general_purpose::URL_SAFE_NO_PAD.encode(token)
 	}
 
+	/// Decodes the token.
+	/// TTL is only validated if the validate flag is true.
+	/// ```rust
+	/// let payload = amora.decode(&token, true).unwrap_or("".into());
+	/// let payload = std::str::from_utf8(&payload).unwrap_or("");
+	/// ```
 	pub fn decode(&self, token: &str, validate: bool) -> Result<Vec<u8>, AmoraErr> {
 		let token = match general_purpose::URL_SAFE_NO_PAD.decode(token) {
 			Ok(token) => token,

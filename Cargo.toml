@@ -2,6 +2,13 @@
 name = "amora-rs"
 version = "0.1.0"
 edition = "2021"
+description = "Amora is a secure token inspired by JWT and Branca, but enhanced a bit in some areas."
+readme = "README.md"
+repository = "https://codeberg.org/gblach/amora-rs"
+license = "MPL-2.0"
+locense-file = "LICENSE"
+keywords = ["authorization", "token", "jwt", "branca"]
+categories = ["authentication", "cryptography"]
 
 [dependencies]
 base64 = "0.21"

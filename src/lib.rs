@@ -288,7 +288,7 @@ impl Amora {
 	}
 }
 
-#[derive(Debug)]
+#[derive(PartialEq, Debug)]
 pub enum AmoraErr {
 	InvalidKey,
 	WrongEncoding,

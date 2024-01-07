@@ -54,6 +54,7 @@ fn amora_zero_key_invalid_chars() {
 	let key = "ZXCV70662facd37dc36c0fd1dad07eaa047c2854583c920f524b2b01d840831a";
 	let amora = Amora::amora_zero_from_str(key);
 	assert!(amora.is_err());
+	assert_eq!(amora.err().unwrap(), AmoraErr::InvalidKey);
 }
 
 #[test]
@@ -61,6 +62,7 @@ fn amora_zero_key_too_short() {
 	let key = "4f99";
 	let amora = Amora::amora_zero_from_str(key);
 	assert!(amora.is_err());
+	assert_eq!(amora.err().unwrap(), AmoraErr::InvalidKey);
 }
 
 #[test]
@@ -68,6 +70,28 @@ fn amora_zero_key_too_long() {
 	let key = "4f9970662facd37dc36c0fd1dad07eaa047c2854583c920f524b2b01d840831a01234";
 	let amora = Amora::amora_zero_from_str(key);
 	assert!(amora.is_err());
+	assert_eq!(amora.err().unwrap(), AmoraErr::InvalidKey);
+}
+
+#[test]
+fn amora_zero_wrong_encoding() {
+	let key = "4f9970662facd37dc36c0fd1dad07eaa047c2854583c920f524b2b01d840831a";
+	let amora = Amora::amora_zero_from_str(key).unwrap();
+	let token = "xGAihaJSerdTCt-zpa0XRS-sY5F4H1SZ5mwRzpWc4rXYMY1NIgz8DpsGTD-JAdqmsIgTo6SRYl4m4";
+	let decoded = amora.decode(&token, false);
+	assert!(decoded.is_err());
+	assert_eq!(decoded.err().unwrap(), AmoraErr::WrongEncoding);
+}
+
+#[test]
+fn amora_zero_unsupported_version() {
+	let key = "4f9970662facd37dc36c0fd1dad07eaa047c2854583c920f524b2b01d840831a";
+	let amora = Amora::amora_zero_from_str(key).unwrap();
+	let token = concat!("oQEAAGgmXpFevpAoQpgcC7AFgwmbHKDTABRGdPQxfsIymRJPN4VWZdALbFb_E3Jd8_",
+		"xGAihaJSerdTCt-zpa0XRS-sY5F4H1SZ5mwRzpWc4rXYMY1NIgz8DpsGTD-JAdqmsIgTo6SRYl4m4");
+	let decoded = amora.decode(&token, false);
+	assert!(decoded.is_err());
+	assert_eq!(decoded.err().unwrap(), AmoraErr::UnsupportedVersion);
 }
 
 #[test]
@@ -113,4 +137,26 @@ fn amora_one_decode_only() {
 	let decoded = amora.decode(&token, false).unwrap_or("".into());
 	let decoded = std::str::from_utf8(&decoded).unwrap_or("");
 	assert_eq!(payload, decoded);
+}
+
+#[test]
+fn amora_one_expited_token() {
+	let secret_key = "778d0b92672b9a25ec4fbe65e3ad2212efa011e8f7035754c1342fe46191dbb3";
+	let amora = Amora::amora_one_from_str(Some(secret_key), None).unwrap();
+	let token = concat!("oQEAAGgmXpFevpAoQpgcC7AFgwmbHKDTABRGdPQxfsIymRJPN4VWZdALbFb_E3Jd8_",
+		"xGAihaJSerdTCt-zpa0XRS-sY5F4H1SZ5mwRzpWc4rXYMY1NIgz8DpsGTD-JAdqmsIgTo6SRYl4m4");
+	let decoded = amora.decode(&token, true);
+	assert!(decoded.is_err());
+	assert_eq!(decoded.err().unwrap(), AmoraErr::ExpiredToken);
+}
+
+#[test]
+fn amora_one_encryption_error() {
+	let secret_key = "778d0b92672b9a25ec4fbe65e3ad2212efa011e8f7035754c1342fe46191dbb3";
+	let amora = Amora::amora_one_from_str(Some(secret_key), None).unwrap();
+	let token = concat!("oQEAAGgmXpFevpAoQpgcC7AFgwmbHKDTABRGdPQxfsIymRJPN4VWZdALbFb_E3Jd8_",
+		"xGAihaJSerdTCt-zpa0XRS-sY5F4H1SZ5mwRzpWc4rXYMY1NIgz8DpsGTD-JAdqmsIgTo6SRYl4m8");
+	let decoded = amora.decode(&token, false);
+	assert!(decoded.is_err());
+	assert_eq!(decoded.err().unwrap(), AmoraErr::EncryptionError);
 }

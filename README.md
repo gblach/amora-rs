@@ -38,7 +38,7 @@ The first pair must be known. The second pair is randomly generated for each tok
 
 ## Code examples
 
-### Symmetric from bytes
+### Symmetric key from bytes
 
 ```rust
 let key = [

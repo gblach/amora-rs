@@ -301,6 +301,7 @@ impl Amora {
 	/// let token = concat!("oAEAAE_X6GVaC7xve5xaaAaLiW1YPqHX9I1BNGbKnC7A",
 	///     "rMke4GEU9MXCgU2U5jYAkJhDXQBqsO5tadCKyXZmI3mV-bpDFr1aQc1U");
 	/// let meta = Amora::meta(token).unwrap();
+	/// println!("{:?}", meta);
 	/// ```
 	pub fn meta(token: &str) -> Result<AmoraMeta, AmoraErr> {
 		let token = match general_purpose::URL_SAFE_NO_PAD.decode(token) {

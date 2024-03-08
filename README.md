@@ -88,3 +88,12 @@ let token = amora.encode(&payload.as_bytes(), 1);
 let decoded = amora.decode(&token, true).unwrap_or("".into());
 let decoded = std::str::from_utf8(&decoded).unwrap_or("");
 ```
+
+### Fetch metadata from the token
+
+```rust
+let token = concat!("oAEAAE_X6GVaC7xve5xaaAaLiW1YPqHX9I1BNGbKnC7A",
+	"rMke4GEU9MXCgU2U5jYAkJhDXQBqsO5tadCKyXZmI3mV-bpDFr1aQc1U");
+let meta = Amora::meta(token).unwrap();
+println!("{:?}", meta);
+```

@@ -160,3 +160,46 @@ fn amora_one_encryption_error() {
 	assert!(decoded.is_err());
 	assert_eq!(decoded.err().unwrap(), AmoraErr::EncryptionError);
 }
+
+#[test]
+fn amora_zero_meta_ok() {
+	let key = [
+		0x4f, 0x99, 0x70, 0x66, 0x2f, 0xac, 0xd3, 0x7d,
+		0xc3, 0x6c, 0x0f, 0xd1, 0xda, 0xd0, 0x7e, 0xaa,
+		0x04, 0x7c, 0x28, 0x54, 0x58, 0x3c, 0x92, 0x0f,
+		0x52, 0x4b, 0x2b, 0x01, 0xd8, 0x40, 0x83, 0x1a,
+	];
+	let amora = Amora::amora_zero(&key);
+	let payload = "sample_payload_just_for_testing";
+	let token = amora.encode(&payload.as_bytes(), 1);
+	let now = std::time::UNIX_EPOCH.elapsed().unwrap().as_secs() as u32;
+	let meta = Amora::meta(&token);
+	assert!(meta.is_ok());
+	let meta = meta.unwrap();
+	assert_eq!(meta.version, AmoraVer::Zero);
+	assert_eq!(meta.ttl, 1);
+	assert_eq!(meta.timestamp, now);
+	assert_eq!(meta.is_valid, true);
+}
+
+#[test]
+fn amora_one_meta_expired() {
+	let token = concat!("oQEAAGgmXpFevpAoQpgcC7AFgwmbHKDTABRGdPQxfsIymRJPN4VWZdALbFb_E3Jd8_",
+		"xGAihaJSerdTCt-zpa0XRS-sY5F4H1SZ5mwRzpWc4rXYMY1NIgz8DpsGTD-JAdqmsIgTo6SRYl4m4");
+	let meta = Amora::meta(token);
+	assert!(meta.is_ok());
+	let meta = meta.unwrap();
+	assert_eq!(meta.version, AmoraVer::One);
+	assert_eq!(meta.ttl, 1);
+	assert_eq!(meta.timestamp, 1700169015);
+	assert_eq!(meta.is_valid, false);
+}
+
+#[test]
+fn amora_one_meta_unsupported_version() {
+	let token = concat!("ogEAAGgmXpFevpAoQpgcC7AFgwmbHKDTABRGdPQxfsIymRJPN4VWZdALbFb_E3Jd8_",
+		"xGAihaJSerdTCt-zpa0XRS-sY5F4H1SZ5mwRzpWc4rXYMY1NIgz8DpsGTD-JAdqmsIgTo6SRYl4m4");
+	let meta = Amora::meta(token);
+	assert!(meta.is_err());
+	assert_eq!(meta.err().unwrap(), AmoraErr::UnsupportedVersion);
+}

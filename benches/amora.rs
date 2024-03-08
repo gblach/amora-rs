@@ -32,6 +32,12 @@ fn criterion_benchmark(c: &mut criterion::Criterion) {
 		let token = amora.encode(&payload.as_bytes(), 1);
 		let _ = amora.decode(&token, true).unwrap_or("".into());
 	}));
+
+	c.bench_function("amora_meta", |b| b.iter(|| {
+		let token = concat!("oAEAAE_X6GVaC7xve5xaaAaLiW1YPqHX9I1BNGbKnC7A",
+			"rMke4GEU9MXCgU2U5jYAkJhDXQBqsO5tadCKyXZmI3mV-bpDFr1aQc1U");
+		let _ = Amora::meta(token).unwrap();
+	}));
 }
 
 criterion::criterion_group!(benches, criterion_benchmark);

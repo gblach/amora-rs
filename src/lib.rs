@@ -45,7 +45,7 @@ use generic_array::GenericArray;
 use rand_core::{RngCore, OsRng};
 use x25519_dalek::{EphemeralSecret, PublicKey, StaticSecret};
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, PartialEq, Debug)]
 enum AmoraVer {
 	Zero = 0xa0,
 	One = 0xa1,
@@ -56,6 +56,14 @@ pub struct Amora {
 	cipher: Option<XChaCha20Poly1305>,
 	secret_key: Option<StaticSecret>,
 	public_key: Option<PublicKey>,
+}
+
+#[allow(dead_code)]
+pub struct AmoraMeta {
+	version: AmoraVer,
+	ttl: u32,
+	timestamp: u32,
+	is_valid: bool,
 }
 
 impl Amora {
@@ -163,8 +171,8 @@ impl Amora {
 		Ok(Self::amora_one(secret_key, public_key))
 	}
 
-	fn aad_len(&self) -> usize {
-		match &self.version {
+	fn aad_len(version: AmoraVer) -> usize {
+		match version {
 			AmoraVer::Zero => 4,
 			AmoraVer::One => 36,
 		}
@@ -200,7 +208,7 @@ impl Amora {
 			},
 		};
 
-		let aad_len = self.aad_len();
+		let aad_len = Self::aad_len(self.version);
 		let mut aad = Vec::with_capacity(aad_len);
 		aad.push(self.version as u8);
 		aad.extend_from_slice(&ttl.to_le_bytes()[..3]);
@@ -253,7 +261,7 @@ impl Amora {
 			return Err(AmoraErr::UnsupportedVersion);
 		}
 
-		let aad_len = self.aad_len();
+		let aad_len = Self::aad_len(self.version);
 		let aad = &token[.. aad_len];
 		let nonce = GenericArray::from_slice(&token[aad_len .. aad_len+24]);
 		let ct = &token[aad_len+24 ..];
@@ -285,6 +293,41 @@ impl Amora {
 			Ok(payload) => Ok(payload),
 			Err(_) => Err(AmoraErr::EncryptionError),
 		}
+	}
+
+	/// Fetches metadata from the token.
+	/// ```rust
+	/// use amora_rs::Amora;
+	/// let token = concat!("oAEAAE_X6GVaC7xve5xaaAaLiW1YPqHX9I1BNGbKnC7A",
+	///     "rMke4GEU9MXCgU2U5jYAkJhDXQBqsO5tadCKyXZmI3mV-bpDFr1aQc1U");
+	/// let meta = Amora::meta(token).unwrap();
+	/// ```
+	pub fn meta(token: &str) -> Result<AmoraMeta, AmoraErr> {
+		let token = match general_purpose::URL_SAFE_NO_PAD.decode(token) {
+			Ok(token) => token,
+			Err(_) => return Err(AmoraErr::WrongEncoding),
+		};
+
+		let version: AmoraVer = match token[0] {
+			0xa0 => AmoraVer::Zero,
+			0xa1 => AmoraVer::One,
+			_ => return Err(AmoraErr::UnsupportedVersion),
+		};
+
+		let aad_len = Self::aad_len(version);
+		let aad = &token[.. aad_len];
+		let nonce = &token[aad_len .. aad_len+24];
+
+		let ttl = u32::from_le_bytes(aad[..4].try_into().unwrap()) >> 8;
+		let timestamp = u32::from_le_bytes(nonce[..4].try_into().unwrap());
+		let now = std::time::UNIX_EPOCH.elapsed().unwrap().as_secs();
+
+		Ok(AmoraMeta {
+			version,
+			ttl,
+			timestamp,
+			is_valid: u64::from(timestamp + ttl) >= now,
+		})
 	}
 }
 

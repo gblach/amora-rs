@@ -46,7 +46,7 @@ use rand_core::{RngCore, OsRng};
 use x25519_dalek::{EphemeralSecret, PublicKey, StaticSecret};
 
 #[derive(Clone, Copy, PartialEq, Debug)]
-enum AmoraVer {
+pub enum AmoraVer {
 	Zero = 0xa0,
 	One = 0xa1,
 }
@@ -58,12 +58,12 @@ pub struct Amora {
 	public_key: Option<PublicKey>,
 }
 
-#[allow(dead_code)]
+#[derive(Debug)]
 pub struct AmoraMeta {
-	version: AmoraVer,
-	ttl: u32,
-	timestamp: u32,
-	is_valid: bool,
+	pub version: AmoraVer,
+	pub ttl: u32,
+	pub timestamp: u32,
+	pub is_valid: bool,
 }
 
 impl Amora {

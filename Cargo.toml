@@ -1,6 +1,6 @@
 [package]
 name = "amora-rs"
-version = "0.2.0"
+version = "0.2.1"
 edition = "2021"
 description = "Amora is a secure token inspired by JWT and Branca, but enhanced a bit in some areas."
 readme = "README.md"

@@ -39,10 +39,9 @@
 //! The first pair must be known. The second pair is randomly generated for each token.
 
 use base64::{Engine, engine::general_purpose};
-use chacha20poly1305::XChaCha20Poly1305;
+use chacha20poly1305::{XChaCha20Poly1305, XNonce};
 use chacha20poly1305::aead::{Aead, KeyInit, Payload};
-use generic_array::GenericArray;
-use rand_core::{RngCore, OsRng};
+use rand_core::{OsRng, TryRngCore};
 use x25519_dalek::{EphemeralSecret, PublicKey, StaticSecret};
 
 #[derive(Clone, Copy, PartialEq, Debug)]
@@ -220,12 +219,12 @@ impl Amora {
 		let now = std::time::UNIX_EPOCH.elapsed().unwrap().as_secs();
 		nonce.extend_from_slice(&now.to_le_bytes()[..4]);
 		let mut randbuf = [0u8; 20];
-		OsRng.fill_bytes(&mut randbuf);
+		OsRng.try_fill_bytes(&mut randbuf).unwrap();
 		nonce.extend_from_slice(&randbuf);
-		let nonce_ga = GenericArray::from_slice(&nonce);
+		let xnonce: XNonce = nonce.as_slice().try_into().unwrap();
 
 		let pt_aad = Payload { msg: payload, aad: &aad };
-		let mut ct = cipher.encrypt(nonce_ga, pt_aad).unwrap();
+		let mut ct = cipher.encrypt(&xnonce, pt_aad).unwrap();
 
 		let mut token = Vec::with_capacity(aad_len + 24 + ct.len());
 		token.append(&mut aad);
@@ -263,7 +262,7 @@ impl Amora {
 
 		let aad_len = Self::aad_len(self.version);
 		let aad = &token[.. aad_len];
-		let nonce = GenericArray::from_slice(&token[aad_len .. aad_len+24]);
+		let nonce = &token[aad_len .. aad_len+24];
 		let ct = &token[aad_len+24 ..];
 
 		if validate {
@@ -288,8 +287,9 @@ impl Amora {
 			},
 		};
 
+		let xnonce: XNonce = nonce.try_into().unwrap();
 		let ct_aad = Payload { msg: ct, aad };
-		match cipher.decrypt(nonce, ct_aad) {
+		match cipher.decrypt(&xnonce, ct_aad) {
 			Ok(payload) => Ok(payload),
 			Err(_) => Err(AmoraErr::EncryptionError),
 		}

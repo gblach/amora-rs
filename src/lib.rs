@@ -41,7 +41,6 @@
 use base64::{Engine, engine::general_purpose};
 use chacha20poly1305::{XChaCha20Poly1305, XNonce};
 use chacha20poly1305::aead::{Aead, KeyInit, Payload};
-use rand_core::{OsRng, TryRngCore};
 use x25519_dalek::{EphemeralSecret, PublicKey, StaticSecret};
 
 #[derive(Clone, Copy, PartialEq, Debug)]
@@ -219,7 +218,7 @@ impl Amora {
 		let now = std::time::UNIX_EPOCH.elapsed().unwrap().as_secs();
 		nonce.extend_from_slice(&now.to_le_bytes()[..4]);
 		let mut randbuf = [0u8; 20];
-		OsRng.try_fill_bytes(&mut randbuf).unwrap();
+		rand::fill(&mut randbuf);
 		nonce.extend_from_slice(&randbuf);
 		let xnonce: XNonce = nonce.as_slice().try_into().unwrap();
 

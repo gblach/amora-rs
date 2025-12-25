@@ -13,9 +13,9 @@ fn criterion_benchmark(c: &mut criterion::Criterion) {
 			0x04, 0x7c, 0x28, 0x54, 0x58, 0x3c, 0x92, 0x0f,
 			0x52, 0x4b, 0x2b, 0x01, 0xd8, 0x40, 0x83, 0x1a,
 		];
-		let amora = Amora::amora_zero(&key);
+		let amora = Amora::amora_zero(&key).unwrap();
 		let payload = "sample_payload_just_for_benchmarking";
-		let token = amora.encode(&payload.as_bytes(), 1);
+		let token = amora.encode(&payload.as_bytes(), 1).unwrap();
 		let _ = amora.decode(&token, true).unwrap_or("".into());
 	}));
 
@@ -29,7 +29,7 @@ fn criterion_benchmark(c: &mut criterion::Criterion) {
 		let public_key = PublicKey::from(&secret_key);
 		let amora = Amora::amora_one(Some(secret_key), Some(public_key));
 		let payload = "sample_payload_just_for_benchmarking";
-		let token = amora.encode(&payload.as_bytes(), 1);
+		let token = amora.encode(&payload.as_bytes(), 1).unwrap();
 		let _ = amora.decode(&token, true).unwrap_or("".into());
 	}));
 

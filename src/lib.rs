@@ -74,15 +74,18 @@ impl Amora {
 	///     0x04, 0x7c, 0x28, 0x54, 0x58, 0x3c, 0x92, 0x0f,
 	///     0x52, 0x4b, 0x2b, 0x01, 0xd8, 0x40, 0x83, 0x1a,
 	/// ];
-	/// let amora = Amora::amora_zero(&key);
+	/// let amora = Amora::amora_zero(&key).unwrap();
 	/// ```
-	pub fn amora_zero(key: &[u8; 32]) -> Amora {
-		Amora {
+	pub fn amora_zero(key: &[u8; 32]) -> Result<Amora, AmoraErr> {
+		let cipher = XChaCha20Poly1305::new_from_slice(key)
+			.map_err(|_| AmoraErr::InvalidKey)?;
+
+		Ok(Amora {
 			version: AmoraVer::Zero,
-			cipher: XChaCha20Poly1305::new_from_slice(key).ok(),
+			cipher: Some(cipher),
 			secret_key: None,
 			public_key: None,
-		}
+		})
 	}
 
 	/// Creates Amora instance with an asymmetric key loaded from two [u8; 32] slices.
@@ -134,7 +137,7 @@ impl Amora {
 	/// ```
 	pub fn amora_zero_from_str(key: &str) -> Result<Amora, AmoraErr> {
 		let key = Self::key_from_str(key)?;
-		Ok(Self::amora_zero(&key))
+		Self::amora_zero(&key)
 	}
 
 	/// Create Amora instance with an asymmetric key loaded from two strings.
@@ -176,6 +179,12 @@ impl Amora {
 		}
 	}
 
+	fn get_current_timestamp() -> Result<u64, AmoraErr> {
+		std::time::UNIX_EPOCH.elapsed()
+			.map(|d| d.as_secs())
+			.map_err(|_| AmoraErr::SystemTimeError)
+	}
+
 	/// Encodes the token.
 	/// TTL is the number of seconds that the token will be valid for.
 	/// ```rust
@@ -186,22 +195,27 @@ impl Amora {
 	///     0x04, 0x7c, 0x28, 0x54, 0x58, 0x3c, 0x92, 0x0f,
 	///     0x52, 0x4b, 0x2b, 0x01, 0xd8, 0x40, 0x83, 0x1a,
 	/// ];
-	/// let amora = Amora::amora_zero(&key);
+	/// let amora = Amora::amora_zero(&key).unwrap();
 	/// let payload = "sample_payload";
 	/// let token = amora.encode(&payload.as_bytes(), 1800);
 	/// ```
-	pub fn encode(&self, payload: &[u8], ttl: u32) -> String {
+	pub fn encode(&self, payload: &[u8], ttl: u32) -> Result<String, AmoraErr> {
 		let (cipher, rand_public_key) = match &self.version {
 			AmoraVer::Zero => {
-				(self.cipher.clone().unwrap(), None)
+				let cipher = self.cipher.clone()
+					.ok_or(AmoraErr::CipherNotInitialized)?;
+				(cipher, None)
 			},
 			AmoraVer::One => {
+				let public_key = self.public_key
+					.as_ref()
+					.ok_or(AmoraErr::PublicKeyNotFound)?;
+
 				let rand_secret_key = EphemeralSecret::random();
 				let rand_public_key = PublicKey::from(&rand_secret_key);
-				let shared_key = rand_secret_key
-					.diffie_hellman(&self.public_key.unwrap());
-				let cipher = XChaCha20Poly1305
-					::new_from_slice(shared_key.as_bytes()).unwrap();
+				let shared_key = rand_secret_key.diffie_hellman(public_key);
+				let cipher = XChaCha20Poly1305::new_from_slice(shared_key.as_bytes())
+					.map_err(|_| AmoraErr::EncryptionError)?;
 				(cipher, Some(rand_public_key))
 			},
 		};
@@ -215,22 +229,24 @@ impl Amora {
 		}
 
 		let mut nonce = Vec::with_capacity(24);
-		let now = std::time::UNIX_EPOCH.elapsed().unwrap().as_secs();
+		let now = Self::get_current_timestamp()?;
 		nonce.extend_from_slice(&now.to_le_bytes()[..4]);
 		let mut randbuf = [0u8; 20];
 		rand::fill(&mut randbuf);
 		nonce.extend_from_slice(&randbuf);
-		let xnonce: XNonce = nonce.as_slice().try_into().unwrap();
+		let xnonce: XNonce = nonce.as_slice().try_into()
+			.map_err(|_| AmoraErr::NonceError)?;
 
 		let pt_aad = Payload { msg: payload, aad: &aad };
-		let mut ct = cipher.encrypt(&xnonce, pt_aad).unwrap();
+		let mut ct = cipher.encrypt(&xnonce, pt_aad)
+			.map_err(|_| AmoraErr::EncryptionError)?;
 
 		let mut token = Vec::with_capacity(aad_len + 24 + ct.len());
 		token.append(&mut aad);
 		token.append(&mut nonce);
 		token.append(&mut ct);
 
-		general_purpose::URL_SAFE_NO_PAD.encode(token)
+		Ok(general_purpose::URL_SAFE_NO_PAD.encode(token))
 	}
 
 	/// Decodes the token.
@@ -250,24 +266,32 @@ impl Amora {
 	/// let payload = std::str::from_utf8(&payload).unwrap_or("");
 	/// ```
 	pub fn decode(&self, token: &str, validate: bool) -> Result<Vec<u8>, AmoraErr> {
-		let token = match general_purpose::URL_SAFE_NO_PAD.decode(token) {
-			Ok(token) => token,
-			Err(_) => return Err(AmoraErr::WrongEncoding),
-		};
+		let token = general_purpose::URL_SAFE_NO_PAD.decode(token)
+			.map_err(|_| AmoraErr::WrongEncoding)?;
 
-		if token[0] != self.version as u8 {
+		if token.is_empty() || token[0] != self.version as u8 {
 			return Err(AmoraErr::UnsupportedVersion);
 		}
 
 		let aad_len = Self::aad_len(self.version);
+		if token.len() < aad_len + 24 {
+			return Err(AmoraErr::InvalidTokenLength);
+		}
+
 		let aad = &token[.. aad_len];
 		let nonce = &token[aad_len .. aad_len+24];
 		let ct = &token[aad_len+24 ..];
 
 		if validate {
-			let ttl = u32::from_le_bytes(aad[..4].try_into().unwrap()) >> 8;
-			let timestamp = u32::from_le_bytes(nonce[..4].try_into().unwrap());
-			let now = std::time::UNIX_EPOCH.elapsed().unwrap().as_secs();
+			let ttl_bytes: [u8; 4] = aad[..4].try_into()
+				.map_err(|_| AmoraErr::InvalidTokenLength)?;
+			let ttl = u32::from_le_bytes(ttl_bytes) >> 8;
+
+			let timestamp_bytes: [u8; 4] = nonce[..4].try_into()
+				.map_err(|_| AmoraErr::InvalidTokenLength)?;
+			let timestamp = u32::from_le_bytes(timestamp_bytes);
+
+			let now = Self::get_current_timestamp()?;
 			if u64::from(timestamp + ttl) < now {
 				return Err(AmoraErr::ExpiredToken);
 			}
@@ -275,23 +299,33 @@ impl Amora {
 
 		let cipher = match &self.version {
 			AmoraVer::Zero => {
-				self.cipher.clone().unwrap()
+				self.cipher.clone()
+					.ok_or(AmoraErr::CipherNotInitialized)?
 			},
 			AmoraVer::One => {
-				let rand_public_key: [u8; 32] = aad[4..].try_into().unwrap();
+				if aad.len() < 36 {
+					return Err(AmoraErr::InvalidTokenLength);
+				}
+
+				let rand_public_key: [u8; 32] = aad[4..].try_into()
+					.map_err(|_| AmoraErr::InvalidTokenLength)?;
 				let rand_public_key = PublicKey::from(rand_public_key);
-				let shared_key = self.secret_key.as_ref().unwrap()
-					.diffie_hellman(&rand_public_key);
-				XChaCha20Poly1305::new_from_slice(shared_key.as_bytes()).unwrap()
+
+				let secret_key = self.secret_key.as_ref()
+					.ok_or(AmoraErr::SecretKeyNotFound)?;
+				let shared_key = secret_key.diffie_hellman(&rand_public_key);
+
+				XChaCha20Poly1305::new_from_slice(shared_key.as_bytes())
+					.map_err(|_| AmoraErr::EncryptionError)?
 			},
 		};
 
-		let xnonce: XNonce = nonce.try_into().unwrap();
+		let xnonce: XNonce = nonce.try_into()
+			.map_err(|_| AmoraErr::NonceError)?;
 		let ct_aad = Payload { msg: ct, aad };
-		match cipher.decrypt(&xnonce, ct_aad) {
-			Ok(payload) => Ok(payload),
-			Err(_) => Err(AmoraErr::EncryptionError),
-		}
+
+		cipher.decrypt(&xnonce, ct_aad)
+			.map_err(|_| AmoraErr::EncryptionError)
 	}
 
 	/// Fetches metadata from the token.
@@ -303,10 +337,12 @@ impl Amora {
 	/// println!("{:?}", meta);
 	/// ```
 	pub fn meta(token: &str) -> Result<AmoraMeta, AmoraErr> {
-		let token = match general_purpose::URL_SAFE_NO_PAD.decode(token) {
-			Ok(token) => token,
-			Err(_) => return Err(AmoraErr::WrongEncoding),
-		};
+		let token = general_purpose::URL_SAFE_NO_PAD.decode(token)
+			.map_err(|_| AmoraErr::WrongEncoding)?;
+
+		if token.is_empty() {
+			return Err(AmoraErr::InvalidTokenLength);
+		}
 
 		let version: AmoraVer = match token[0] {
 			0xa0 => AmoraVer::Zero,
@@ -315,12 +351,22 @@ impl Amora {
 		};
 
 		let aad_len = Self::aad_len(version);
+		if token.len() < aad_len + 24 {
+			return Err(AmoraErr::InvalidTokenLength);
+		}
+
 		let aad = &token[.. aad_len];
 		let nonce = &token[aad_len .. aad_len+24];
 
-		let ttl = u32::from_le_bytes(aad[..4].try_into().unwrap()) >> 8;
-		let timestamp = u32::from_le_bytes(nonce[..4].try_into().unwrap());
-		let now = std::time::UNIX_EPOCH.elapsed().unwrap().as_secs();
+		let ttl_bytes: [u8; 4] = aad[..4].try_into()
+			.map_err(|_| AmoraErr::InvalidTokenLength)?;
+		let ttl = u32::from_le_bytes(ttl_bytes) >> 8;
+
+		let timestamp_bytes: [u8; 4] = nonce[..4].try_into()
+			.map_err(|_| AmoraErr::InvalidTokenLength)?;
+		let timestamp = u32::from_le_bytes(timestamp_bytes);
+
+		let now = Self::get_current_timestamp()?;
 
 		Ok(AmoraMeta {
 			version,
@@ -331,13 +377,30 @@ impl Amora {
 	}
 }
 
-#[derive(PartialEq, Debug)]
+#[derive(PartialEq, Debug, thiserror::Error)]
 pub enum AmoraErr {
+	#[error("invalid key")]
 	InvalidKey,
+	#[error("wrong encoding")]
 	WrongEncoding,
+	#[error("unsupported version")]
 	UnsupportedVersion,
+	#[error("expired token")]
 	ExpiredToken,
+	#[error("encryption error")]
 	EncryptionError,
+	#[error("system time error")]
+	SystemTimeError,
+	#[error("cipher not initialized")]
+	CipherNotInitialized,
+	#[error("public key not found")]
+	PublicKeyNotFound,
+	#[error("secret key not found")]
+	SecretKeyNotFound,
+	#[error("nonce error")]
+	NonceError,
+	#[error("invalid token length")]
+	InvalidTokenLength,
 }
 
 #[cfg(test)]

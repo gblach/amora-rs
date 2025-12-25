@@ -12,9 +12,9 @@ fn amora_zero_new() {
 		0x04, 0x7c, 0x28, 0x54, 0x58, 0x3c, 0x92, 0x0f,
 		0x52, 0x4b, 0x2b, 0x01, 0xd8, 0x40, 0x83, 0x1a,
 	];
-	let amora = Amora::amora_zero(&key);
+	let amora = Amora::amora_zero(&key).unwrap();
 	let payload = "sample_payload_just_for_testing";
-	let token = amora.encode(&payload.as_bytes(), 1);
+	let token = amora.encode(&payload.as_bytes(), 1).unwrap();
 	let decoded = amora.decode(&token, true).unwrap_or("".into());
 	let decoded = std::str::from_utf8(&decoded).unwrap_or("");
 	assert_eq!(payload, decoded);
@@ -25,7 +25,7 @@ fn amora_zero_from_str() {
 	let key = "4f9970662facd37dc36c0fd1dad07eaa047c2854583c920f524b2b01d840831a";
 	let amora = Amora::amora_zero_from_str(key).unwrap();
 	let payload = "sample_payload_just_for_testing";
-	let token = amora.encode(&payload.as_bytes(), 1);
+	let token = amora.encode(&payload.as_bytes(), 1).unwrap();
 	let decoded = amora.decode(&token, true).unwrap_or("".into());
 	let decoded = std::str::from_utf8(&decoded).unwrap_or("");
 	assert_eq!(payload, decoded);
@@ -39,9 +39,9 @@ fn amora_zero_two_keys() {
 		0x04, 0x7c, 0x28, 0x54, 0x58, 0x3c, 0x92, 0x0f,
 		0x52, 0x4b, 0x2b, 0x01, 0xd8, 0x40, 0x83, 0x1a,
 	];
-	let amora = Amora::amora_zero(&key);
+	let amora = Amora::amora_zero(&key).unwrap();
 	let payload = "sample_payload_just_for_testing";
-	let token = amora.encode(&payload.as_bytes(), 1);
+	let token = amora.encode(&payload.as_bytes(), 1).unwrap();
 	let key = "4f9970662facd37dc36c0fd1dad07eaa047c2854583c920f524b2b01d840831a";
 	let amora = Amora::amora_zero_from_str(key).unwrap();
 	let decoded = amora.decode(&token, true).unwrap_or("".into());
@@ -100,7 +100,7 @@ fn amora_one_new() {
 	let public_key = PublicKey::from(&secret_key);
 	let amora = Amora::amora_one(Some(secret_key), Some(public_key));
 	let payload = "sample_payload_just_for_testing";
-	let token = amora.encode(&payload.as_bytes(), 1);
+	let token = amora.encode(&payload.as_bytes(), 1).unwrap();
 	let decoded = amora.decode(&token, true).unwrap_or("".into());
 	let decoded = std::str::from_utf8(&decoded).unwrap_or("");
 	assert_eq!(payload, decoded);
@@ -112,7 +112,7 @@ fn amora_one_from_str() {
 	let public_key = "5cdd89c1bb6859c927c50b6976712f256cdbf14d7273f723dc121c191f9d6d6d";
 	let amora = Amora::amora_one_from_str(Some(secret_key), Some(public_key)).unwrap();
 	let payload = "sample_payload_just_for_testing";
-	let token = amora.encode(&payload.as_bytes(), 1);
+	let token = amora.encode(&payload.as_bytes(), 1).unwrap();
 	let decoded = amora.decode(&token, true).unwrap_or("".into());
 	let decoded = std::str::from_utf8(&decoded).unwrap_or("");
 	assert_eq!(payload, decoded);
@@ -123,7 +123,7 @@ fn amora_one_encode_only() {
 	let public_key = "5cdd89c1bb6859c927c50b6976712f256cdbf14d7273f723dc121c191f9d6d6d";
 	let amora = Amora::amora_one_from_str(None, Some(public_key)).unwrap();
 	let payload = "sample_payload_just_for_testing";
-	let token = amora.encode(&payload.as_bytes(), 1);
+	let token = amora.encode(&payload.as_bytes(), 1).unwrap();
 	assert_eq!(token.len(), 143);
 }
 
@@ -169,9 +169,9 @@ fn amora_zero_meta_ok() {
 		0x04, 0x7c, 0x28, 0x54, 0x58, 0x3c, 0x92, 0x0f,
 		0x52, 0x4b, 0x2b, 0x01, 0xd8, 0x40, 0x83, 0x1a,
 	];
-	let amora = Amora::amora_zero(&key);
+	let amora = Amora::amora_zero(&key).unwrap();
 	let payload = "sample_payload_just_for_testing";
-	let token = amora.encode(&payload.as_bytes(), 1);
+	let token = amora.encode(&payload.as_bytes(), 1).unwrap();
 	let now = std::time::UNIX_EPOCH.elapsed().unwrap().as_secs() as u32;
 	let meta = Amora::meta(&token);
 	assert!(meta.is_ok());

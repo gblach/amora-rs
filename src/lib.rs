@@ -38,7 +38,7 @@
 //! The shared key is computed using the X25519 function. It requires two pairs of priv/pub keys.
 //! The first pair must be known. The second pair is randomly generated for each token.
 
-use base64::{Engine, engine::general_purpose};
+use base64ct::{Base64UrlUnpadded, Encoding};
 use chacha20poly1305::{XChaCha20Poly1305, XNonce};
 use chacha20poly1305::aead::{Aead, KeyInit, Payload};
 use x25519_dalek::{EphemeralSecret, PublicKey, StaticSecret};
@@ -246,7 +246,7 @@ impl Amora {
 		token.append(&mut nonce);
 		token.append(&mut ct);
 
-		Ok(general_purpose::URL_SAFE_NO_PAD.encode(token))
+		Ok(Base64UrlUnpadded::encode_string(&token))
 	}
 
 	/// Decodes the token.
@@ -266,7 +266,7 @@ impl Amora {
 	/// let payload = std::str::from_utf8(&payload).unwrap_or("");
 	/// ```
 	pub fn decode(&self, token: &str, validate: bool) -> Result<Vec<u8>, AmoraErr> {
-		let token = general_purpose::URL_SAFE_NO_PAD.decode(token)
+		let token = Base64UrlUnpadded::decode_vec(token)
 			.map_err(|_| AmoraErr::WrongEncoding)?;
 
 		if token.is_empty() || token[0] != self.version as u8 {
@@ -337,7 +337,7 @@ impl Amora {
 	/// println!("{:?}", meta);
 	/// ```
 	pub fn meta(token: &str) -> Result<AmoraMeta, AmoraErr> {
-		let token = general_purpose::URL_SAFE_NO_PAD.decode(token)
+		let token = Base64UrlUnpadded::decode_vec(token)
 			.map_err(|_| AmoraErr::WrongEncoding)?;
 
 		if token.is_empty() {
